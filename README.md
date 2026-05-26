@@ -21,3 +21,7 @@ server02
 172.0.0.1
 172.0.0.2
 ```
+
+---
+
+**Output:** .CSV table format of the results.
