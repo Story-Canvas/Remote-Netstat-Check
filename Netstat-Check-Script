@@ -1,0 +1,60 @@
+#-------------------------------#
+#	Created by: SC-Dev      #
+#-------------------------------#
+
+#----------------------------------------------#
+# Adjust $inputFile to serverlist.txt location #
+#----------------------------------------------#
+$InputFile = ".\serverlist.txt"
+
+#-----------------------------------------------#
+# Adjust $outputFile to desired output location #
+#-----------------------------------------------#
+$OutputFile = "C:\temp\NetworkPortReport.csv"
+
+if (-not (Test-Path $InputFile)) {
+    Write-Error "Input file not found at $InputFile"
+    Return
+}
+
+$ServerList = Get-Content $InputFile
+$Report = @()
+
+foreach ($Server in $ServerList) {
+    Write-Host "Processing $Server..." -ForegroundColor Cyan
+    
+    try {
+
+        $Connections = Invoke-Command -ComputerName $Server -ScriptBlock {
+            Get-NetTCPConnection -State Listen, Established | 
+            Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess |
+            ForEach-Object {
+                $Proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+                $_ | Add-Member -MemberType NoteProperty -Name "ProcessName" -Value $Proc.ProcessName -PassThru
+                $_ | Add-Member -MemberType NoteProperty -Name "ProcessPath" -Value $Proc.Path -PassThru
+                $_
+            }
+        } -ErrorAction Stop
+
+        foreach ($Conn in $Connections) {
+            $Report += [PSCustomObject]@{
+                ServerName    = $Server
+                Protocol      = 'TCP'
+                LocalAddress  = $Conn.LocalAddress
+                LocalPort     = $Conn.LocalPort
+                RemoteAddress = $Conn.RemoteAddress
+                RemotePort    = $Conn.RemotePort
+                State         = $Conn.State
+                PID           = $Conn.OwningProcess
+                ProcessName   = $Conn.ProcessName
+                ProcessPath   = $Conn.ProcessPath
+            }
+        }
+    }
+    catch {
+        Write-Warning "Could not connect to $Server. Error: $_"
+    }
+}
+
+Report | Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8
+Write-Host "Report generated: $OutputFile" -ForegroundColor Green
